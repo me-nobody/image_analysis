@@ -1,6 +1,5 @@
 """
 Jython script to detect and measure foci in red and green channel with Dapi stained nuclei
-from a single image
 Broderick Lab,University of Birmingham,UK
 Anubrata Das
 Copyright (c) 2025 University of Birmingham
@@ -60,45 +59,18 @@ def open_project_files(title="select the Ilastik project files"):
 	return nucleus_project_path,green_project_path,red_project_path
 
   
-def get_image():
+def get_image_from_directory(input_dir):
 	"""
-	collects the czi image
+	collects the czi images from the input folder
 	
 	"""
-	
-	gui = GenericDialogPlus("Open an image")
-	gui.addFileField("CZI file path", "enter text here")
-#	gui.addDirectoryOrFileField("Some_Path", "DefaultPath")
-	gui.showDialog()
-
-	if gui.wasOKed():
-		image_path = gui.getNextString()
-		IJ.log("image path is "+image_path)
-		# jython recognizes single backslash as \\ and double backslash as \\\\
-		# this module splits the file with \\\\ and rest of path elements with \\
-		dir_path,czi_file_name = image_path.split("\\\\")
-		IJ.log(dir_path)
-		IJ.log(czi_file_name)
-		image_path = dir_path  + "\\"+czi_file_name # file path rectified
-		IJ.log("revised image path is "+image_path)
-		imps = BF.openImagePlus(image_path)
-		imps_type = type(imps)
-		IJ.log("imps type in get_image: "+str(imps_type))
-		props_imps = len(imps)
-		props_imps = str(props_imps)
-		IJ.log("length of imps "+props_imps)
-		for index,imp in enumerate(imps):
-			IJ.log("the index is "+str(index))
-			imp.show()
-
-	else:
-		gui_m = GenericDialogPlus("Message")
-		gui_m.addMessage("File not chosen")
-		gui_m.showDialog()
-		WindowManager.closeAllWindows()
-		gc.collect()
-	return imps,image_path,czi_file_name
-
+	files = os.listdir(input_dir)
+	for file_ in files:
+		if file_.endswith(".czi"):
+			image_path = os.path.join(input_dir,file_)
+			#IJ.log(image_path)
+			imps = BF.openImagePlus(image_path)	
+			yield imps,file_
 
 def choose_output_directory():
 	# --- Choose the directory ----
@@ -112,8 +84,8 @@ def choose_output_directory():
 	return srcDir
 	
 def choose_input_directory():
-	# --- Choose the directory ----
-	input_dir =  DirectoryChooser("Choose input images folder").getDirectory() # choose output directory
+	# --- Choose the input images directory ----
+	input_dir =  DirectoryChooser("Choose input images folder").getDirectory() # choose output directory		
 	if not input_dir:
 		gui_m = GenericDialogPlus("Message")
 		gui_m.addMessage("directory not chosen")
@@ -137,31 +109,14 @@ def parse_metadata(image_path):
 	
 
 
-def extractChannel(srcDir=None):	
+def extract_channel_from_file(input_image = None,srcDir = None):	
 	"""
 	extracts channels and saves the 3 channels as tiff images
 	
 	"""
-	# get the directory
-	srcDir = srcDir	
-		
-		
-	czi_image,image_path,czi_file_name = get_image()				  # choose czi image
-	if not czi_image:
-		gui_m = GenericDialogPlus("Message")
-		gui_m.addMessage("File not found")
-		gui_m.showDialog()
-		WindowManager.closeAllWindows()
-		gc.collect()
-		
-	czi_file_name = czi_file_name[:-4]
-	IJ.log("output folder is: "+srcDir)
-	if srcDir is None:
-		gui_m = GenericDialogPlus("Message")
-		gui_m.addMessage("Folder or image not chosen")
-		gui_m.showDialog()		
+	
 	# czi_image is a imageplus object but can be extracted only as the 0th index object from the array object created earlier
-	imps = czi_image[0]
+	imps = input_image[0]
 	split_channels = ChannelSplitter.split(imps) 
 	image_dict = {}
 	for image_ in split_channels:
@@ -195,7 +150,7 @@ def extractChannel(srcDir=None):
 		key_value = image_dict.get(img_key).getTitle()
 		img_key = str(img_key)
 		IJ.log("channel "+img_key+" image title "+key_value)
-	return image_dict,czi_file_name,dapi_channel_image_name,green_channel_image_name,red_channel_image_name
+	return image_dict,image_title,dapi_channel_image_name,green_channel_image_name,red_channel_image_name
 
 
 
@@ -235,7 +190,6 @@ def extract_masks(project_files,image_dict = None,file_name = None):
 	extracts masks from the separate channel images using Ilastik Machine Learning and transfers the mask objects
 	
 	"""
-	file_name = czi_file_name
 	# unpack project files
 	nucleus_project_path,green_project_path,red_project_path = project_files
 	
@@ -244,7 +198,7 @@ def extract_masks(project_files,image_dict = None,file_name = None):
 	dapi_image_id = dapi_image.getID()
 	dapi_image_id = str(dapi_image_id)
 	dapi_mask = run_ilastik(nucleus_project_path,input_imp=dapi_image_id)	
-	dapi_mask.setTitle(file_name+"_dapi_mask.tiff")
+	dapi_mask.setTitle(file_name[:-4]+"_dapi_mask.tiff") # remove file extension
 	dapi_mask_path = os.path.join(srcDir,str(dapi_mask.getTitle()))
 	FileSaver(dapi_mask).saveAsTiff(dapi_mask_path)
 #	dapi_mask.close()
@@ -253,28 +207,29 @@ def extract_masks(project_files,image_dict = None,file_name = None):
 	green_image_id = green_image.getID()
 	green_image_id = str(green_image_id)
 	green_mask = run_ilastik(green_project_path,input_imp=green_image_id)
-	green_mask.setTitle(file_name+"_green_mask.tiff")
+	green_mask.setTitle(file_name[:-4]+"_green_mask.tiff") # remove file extension
 	green_mask_path = os.path.join(srcDir,str(green_mask.getTitle()))
 	FileSaver(green_mask).saveAsTiff(green_mask_path)
 	green_mask_title = green_mask.getTitle()
-	IJ.log("green mask title is "+ green_mask_title)
+#	IJ.log("green mask title is "+ green_mask_title)
 	green_mask.close()
 	# get mask from red channel
 	red_image = image_dict.get("red")
 	red_image_id = red_image.getID()
 	red_image_id = str(red_image_id)
 	red_mask = run_ilastik(red_project_path,input_imp=red_image_id)
-	red_mask.setTitle(file_name+"_red_mask.tiff")
+	red_mask.setTitle(file_name[:-4]+"_red_mask.tiff") # remove file extension
 	red_mask_path = os.path.join(srcDir,str(red_mask.getTitle()))
 	FileSaver(red_mask).saveAsTiff(red_mask_path)
 	red_mask_title = red_mask.getTitle()
-	IJ.log("red mask title is "+ red_mask_title)
+#	IJ.log("red mask title is "+ red_mask_title)
 	red_mask.close()
 	# close unnecessary 
-	file_name = file_name+".czi"
-	main_image = WindowManager.getImage(file_name)
-	main_image.close()
+	
+#	main_image = WindowManager.getImage(file_name)
+#	main_image.close()
 	c1_image_str = "C1-"+file_name
+#	IJ.log("c1_image_str "+c1_image_str)
 	c1_image = WindowManager.getImage(c1_image_str)
 	c1_image.close()
 	c2_image_str = "C2-"+file_name
@@ -341,7 +296,8 @@ def create_dapi_ROI(dapi_mask=None,file_name=None,srcDir=None,dapi_channel_image
 	nuclei_pa.setRoiManager(nuclei_roi_manager)
 	nuclei_pa.setResultsTable(nuclei_table)
 	# we have to iterate over individual roi and analyze each ROI to measure the actual intensities from the dapi channel image
-	# ParticleAnalyzer does not allow the redirect option or use dapi image processor to get actual intensities
+	# ParticleAnalyzer does not allow the redirect option or use dapi image processor to get actual 
+	czi_file_name = image_name[:-4]
 	if thresholded_nuclei is not None:
 		nuclei_pa.analyze(thresholded_nuclei,dapi_mask_processor) # nuclei counted based on mask
 		nuclei_table.show("Nuclei measurements")
@@ -378,7 +334,7 @@ def save_foci_counts(foci_count_dict,output_dir, base_filename):
 	nucleus = foci_count_dict["nucleus"]
 	green = foci_count_dict["green_foci"]
 	red = foci_count_dict["red_foci"]
-	csv_filename = base_filename +  "_foci_counts.csv"
+	csv_filename = base_filename[:-4] +  "_foci_counts.csv"
 	csv_file_path = os.path.join(output_dir, csv_filename)
 	fh = open(csv_file_path, mode='w')
 	with open(csv_file_path,mode = 'w') as fh:
@@ -394,7 +350,7 @@ def save_foci_measurements(foci_table=None, output_dir=None, base_filename=None,
     """
     Save measurements of foci for each nuclei for each channel to CSV
     """
-    csv_filename = base_filename + "_" + mask + "_"+ roi_name+ "_foci_per_nuclei_measurements.csv"
+    csv_filename = base_filename[:-4] + "_" + mask + "_"+ roi_name+ "_foci_per_nuclei_measurements.csv"
     file_path = os.path.join(output_dir, csv_filename)
     try:
     	foci_table.save(file_path)
@@ -407,7 +363,7 @@ def join_csv_files(output_dir=None, file_pattern=None, mask=None,image_name = No
     https://stackoverflow.com/questions/74875493/concatenate-large-csv-files-without-pandas
     
     """
-	f_path_green = srcDir+"\\"+image_name+ "_green_channel_output.csv"
+	f_path_green = srcDir+"\\"+image_name[:-4]+ "_green_channel_output.csv"
 	f_green = open(f_path_green, 'w')
 	f_green.write("ID,Label,Area,Mean,StdDev,Mode,Min,Max,X,Y,XM,YM,Perimeter,BX,BY,Width,Height,Major,Minor,Angle,Circularity,Feret,IntDen,Median,Skew,Kurt,%Area,RawIntDen,FeretX,FeretY,FeretAngle,MinFeret,AR,Round,Solidity,Nuclei_Label,Channel\n")
 	path_green = srcDir + "*green*foci_per_nuclei*.csv"
@@ -424,7 +380,7 @@ def join_csv_files(output_dir=None, file_pattern=None, mask=None,image_name = No
 				IJ.log("green channel file was read")
 	f_green.close()
 	
-	f_path_red = srcDir+"\\"+image_name +"_red_channel_output.csv"		
+	f_path_red = srcDir+"\\"+image_name[:-4] +"_red_channel_output.csv"		
 	f_red = open(f_path_red, 'w')
 	f_red.write("ID,Label,Area,Mean,StdDev,Mode,Min,Max,X,Y,XM,YM,Perimeter,BX,BY,Width,Height,Major,Minor,Angle,Circularity,Feret,IntDen,Median,Skew,Kurt,%Area,RawIntDen,FeretX,FeretY,FeretAngle,MinFeret,AR,Round,Solidity,Nuclei_Label,Channel\n")
 	path_red = srcDir + "*red*foci_per_nuclei*.csv"	
@@ -456,7 +412,6 @@ def measure_values(subselected_mask=None,srcDir=None,file_name=None,mask=None,ro
 	# select the red channel image
 	if mask == "red_channel":
 		for file0 in os.listdir(srcDir):
-#			if "red" in file0 and ".tiff" in file0:
 			if red_channel_image_name in file0:
 				red_file = os.path.join(srcDir,file0)
 				red_image = IJ.openImage(red_file)
@@ -466,7 +421,6 @@ def measure_values(subselected_mask=None,srcDir=None,file_name=None,mask=None,ro
 	# select the green channel image				
 	elif mask == "green_channel":
 		for file0 in os.listdir(srcDir):
-#			if "green" in file0 and ".tiff" in file0:
 			if green_channel_image_name in file0:
 				green_file = os.path.join(srcDir,file0)
 				green_image = IJ.openImage(green_file)
@@ -567,10 +521,10 @@ def close_windows():
 	"""
 	
 	images = WindowManager.getImageTitles()
-	for title in images:
-#		IJ.log("image "+title+" is open")
-		if title:
-			title.close()
+	for image_window in images:
+		if image_window:
+			IJ.selectWindow(image_window)
+			IJ.run("Close")
 	if IJ.getLog():
 		IJ.selectWindow("Log")
 		IJ.run("Close")
@@ -651,26 +605,33 @@ def get_foci_per_nuclei(roi_manager=None,srcDir=None,green_mask_title=None,red_m
 	roi_manager.close()
 #	WindowManager.closeAllWindows()
 
-if __name__ == "__main()__":
-	close_windows()
-	# collect the project files
-	project_files = open_project_files(title="select the Ilastik project files")
-	# choose the directory
-	srcDir = choose_output_directory()
+# ----------------------MAIN-----------------------------------------------
+# script starts here
+close_windows()
+gc.collect()
+# collect the project files
+project_files = open_project_files(title="select the Ilastik project files")
+#	choose the input directory
+input_dir = choose_input_directory()
+# choose the output directory
+srcDir = choose_output_directory()
+images = get_image_from_directory(input_dir)
+for image,image_name in images:
+	IJ.log("image name in loop "+image_name)
 	# extract the channels
-	image_dict,czi_file_name,dapi_channel_image_name,green_channel_image_name,red_channel_image_name = extractChannel(srcDir)
-	gc.collect()
+	image_dict,image_title,dapi_channel_image_name,green_channel_image_name,red_channel_image_name = extract_channel_from_file(input_image=image, srcDir = srcDir)
 	# create the masks
-	dapi_mask,green_mask_title,red_mask_title = extract_masks(project_files,image_dict = image_dict, file_name = czi_file_name)
+	dapi_mask,green_mask_title,red_mask_title = extract_masks(project_files,image_dict = image_dict, file_name = image_name)
 	gc.collect()
 	# create nucleus ROI		
-	nuclei_mask,roi_manager = create_dapi_ROI(dapi_mask= dapi_mask, file_name=czi_file_name, srcDir = srcDir,dapi_channel_image_name=dapi_channel_image_name)
+	nuclei_mask,roi_manager = create_dapi_ROI(dapi_mask= dapi_mask, file_name=image_name, srcDir = srcDir,dapi_channel_image_name=dapi_channel_image_name)
 	gc.collect()
 	# get foci for each channel
-	get_foci_per_nuclei(roi_manager = roi_manager,srcDir = srcDir,file_name = czi_file_name,green_mask_title = green_mask_title,red_mask_title = red_mask_title)
+	get_foci_per_nuclei(roi_manager = roi_manager,srcDir = srcDir,file_name = image_name,green_mask_title = green_mask_title,red_mask_title = red_mask_title)
 	gc.collect()
-	# file processing
-	join_csv_files(output_dir = srcDir,image_name = czi_file_name)
-	move_images(output_folder = srcDir)
-	move_csv_files(output_folder = srcDir)
-	close_windows()
+	# join all output for each channel
+	join_csv_files(output_dir = srcDir,image_name = image_name)
+# file processing
+move_images(output_folder = srcDir)
+move_csv_files(output_folder = srcDir)
+close_windows()
