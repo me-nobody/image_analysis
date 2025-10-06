@@ -337,7 +337,7 @@ def create_dapi_ROI(dapi_mask=None,file_name=None,srcDir=None,dapi_channel_image
 	nuclei_table = ResultsTable()
 	nuclei_roi_manager = RoiManager()
 	# attempting an analyzer object, to be able to redirect images
-	nuclei_pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER|ParticleAnalyzer.EXCLUDE_EDGE_PARTICLES,Measurements.MEAN,nuclei_table,100,200000,0.0,1.0) # atleast 100000 pixels needed for nuclei
+	nuclei_pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER|ParticleAnalyzer.EXCLUDE_EDGE_PARTICLES,Measurements.MEAN,nuclei_table,300,200000,0.0,1.0) # atleast 100000 pixels needed for nuclei
 	nuclei_pa.setRoiManager(nuclei_roi_manager)
 	nuclei_pa.setResultsTable(nuclei_table)
 	# we have to iterate over individual roi and analyze each ROI to measure the actual intensities from the dapi channel image
@@ -567,10 +567,10 @@ def close_windows():
 	"""
 	
 	images = WindowManager.getImageTitles()
-	for title in images:
-#		IJ.log("image "+title+" is open")
-		if title:
-			title.close()
+	for image_window in images:
+		if image_window:
+			IJ.selectWindow(image_window)
+			IJ.run("Close")
 	if IJ.getLog():
 		IJ.selectWindow("Log")
 		IJ.run("Close")
@@ -651,26 +651,27 @@ def get_foci_per_nuclei(roi_manager=None,srcDir=None,green_mask_title=None,red_m
 	roi_manager.close()
 #	WindowManager.closeAllWindows()
 
-if __name__ == "__main()__":
-	close_windows()
-	# collect the project files
-	project_files = open_project_files(title="select the Ilastik project files")
-	# choose the directory
-	srcDir = choose_output_directory()
-	# extract the channels
-	image_dict,czi_file_name,dapi_channel_image_name,green_channel_image_name,red_channel_image_name = extractChannel(srcDir)
-	gc.collect()
-	# create the masks
-	dapi_mask,green_mask_title,red_mask_title = extract_masks(project_files,image_dict = image_dict, file_name = czi_file_name)
-	gc.collect()
-	# create nucleus ROI		
-	nuclei_mask,roi_manager = create_dapi_ROI(dapi_mask= dapi_mask, file_name=czi_file_name, srcDir = srcDir,dapi_channel_image_name=dapi_channel_image_name)
-	gc.collect()
-	# get foci for each channel
-	get_foci_per_nuclei(roi_manager = roi_manager,srcDir = srcDir,file_name = czi_file_name,green_mask_title = green_mask_title,red_mask_title = red_mask_title)
-	gc.collect()
-	# file processing
-	join_csv_files(output_dir = srcDir,image_name = czi_file_name)
-	move_images(output_folder = srcDir)
-	move_csv_files(output_folder = srcDir)
-	close_windows()
+#----------------MAIN SCRIPT--------------------
+#-------script starts here----------------------
+close_windows()
+# collect the project files
+project_files = open_project_files(title="select the Ilastik project files")
+# choose the directory
+srcDir = choose_output_directory()
+# extract the channels
+image_dict,czi_file_name,dapi_channel_image_name,green_channel_image_name,red_channel_image_name = extractChannel(srcDir)
+gc.collect()
+# create the masks
+dapi_mask,green_mask_title,red_mask_title = extract_masks(project_files,image_dict = image_dict, file_name = czi_file_name)
+gc.collect()
+# create nucleus ROI		
+nuclei_mask,roi_manager = create_dapi_ROI(dapi_mask= dapi_mask, file_name=czi_file_name, srcDir = srcDir,dapi_channel_image_name=dapi_channel_image_name)
+gc.collect()
+# get foci for each channel
+get_foci_per_nuclei(roi_manager = roi_manager,srcDir = srcDir,file_name = czi_file_name,green_mask_title = green_mask_title,red_mask_title = red_mask_title)
+gc.collect()
+# file processing
+join_csv_files(output_dir = srcDir,image_name = czi_file_name)
+move_images(output_folder = srcDir)
+move_csv_files(output_folder = srcDir)
+close_windows()
